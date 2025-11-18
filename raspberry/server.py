@@ -7,8 +7,8 @@ app = Flask(__name__)
 
 @app.route('/tag', methods=['POST'])
 def scan():
-    tag_id = request.json.get('tag')
-    print("Received RFID:", tag_id)
+    tag_id = request.json.get('uid')
+    print("Received UID:", tag_id)
 
     # Process the tag here:
     # e.g. check against a database, unlock a door, write to file, etc.
