@@ -1,5 +1,6 @@
+#include <PN532_Custom.h>
+
 #include <SPI.h>
-#include <Adafruit_PN532.h>
 #include <SoftwareSerial.h>
 
 // =================================================================
@@ -24,7 +25,7 @@ SoftwareSerial unoToEspSerial(2, 3); // RX Pin = 2, TX Pin = 3
 // =================================================================
 
 // Initialize the PN532 library using the SPI hardware and our chosen CS pin.
-Adafruit_PN532 nfc(PN532_CS);
+PN532_Custom nfc(PN532_CS);
 
 
 // =================================================================
@@ -60,7 +61,7 @@ void setup() {
 
   // Configure the PN532 to read RFID cards.
   nfc.SAMConfig();
-  
+
   Serial.println("\nSetup complete. Waiting for an RFID card...");
   Serial.println("==========================================");
 }
@@ -77,7 +78,7 @@ void loop() {
 
   if (success) {
     Serial.println("Card Detected!");
-    
+
     // Convert the raw UID byte array into a clean, printable Hexadecimal string.
     String uidString = "";
     for (uint8_t i = 0; i < uidLength; i++) {
@@ -97,7 +98,7 @@ void loop() {
     unoToEspSerial.println(uidString);
     Serial.println("--> UID sent to ESP32.");
     Serial.println("------------------------------------------");
-    
+
     // Wait for one second before trying to read a new card.
     // This prevents spamming the ESP32 if a card is held on the reader.
     delay(1000);
