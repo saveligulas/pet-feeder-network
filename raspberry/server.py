@@ -11,7 +11,7 @@ def scan():
     print("Received UID:", tag_id)
 
     # Process the tag here:
-    # e.g. check against a database, unlock a door, write to file, etc.
+    feed_check()
 
     return {"status": "ok"}
 
@@ -91,12 +91,11 @@ def feed_check():
 
     if pet:
         return jsonify({
-            "status": "ok",
-            "pet": pet["name"]
+            "status": "ok"
         })
     else:
         return jsonify({
-            "status": "unknown"
+            "status": "pet not found"
         })
 
 if __name__ == "__main__":
