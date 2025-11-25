@@ -139,14 +139,42 @@ def scan():
 @app.route('/api/logs')
 def get_logs():
     db = get_db()
-    logs = db.execute("""
+    # Fetch 100 rows to allow for grouping, but we will return fewer
+    raw_logs = db.execute("""
         SELECT pet_name, event_type, details, timestamp 
         FROM feeding_logs 
         ORDER BY timestamp DESC 
-        LIMIT 20
+        LIMIT 100
     """).fetchall()
 
-    return jsonify([dict(row) for row in logs])
+    grouped_logs = []
+
+    for row in raw_logs:
+        current_log = dict(row)
+        current_log['count'] = 1
+
+        # Check if this log is identical to the previous one processed (which is newer in time)
+        if grouped_logs:
+            last_log = grouped_logs[-1]
+            if (last_log['pet_name'] == current_log['pet_name'] and
+                    last_log['event_type'] == current_log['event_type'] and
+                    last_log['details'] == current_log['details']):
+                # Increment count on the displayed log (the most recent one)
+                last_log['count'] += 1
+                continue
+
+        grouped_logs.append(current_log)
+
+    # Return top 20 grouped items
+    return jsonify(grouped_logs[:20])
+
+
+@app.route('/api/logs/clear', methods=['POST'])
+def clear_logs():
+    db = get_db()
+    db.execute("DELETE FROM feeding_logs")
+    db.commit()
+    return jsonify({"success": True})
 
 
 HTML_PAGE = """
@@ -269,6 +297,12 @@ HTML_PAGE = """
             .button-destructive, .badge { align-self: flex-start; }
             .pet-item .badge { margin-top: 0.5rem; }
         }
+
+        .counter-badge {
+            background: hsl(var(--secondary)); color: hsl(var(--secondary-foreground));
+            font-size: 0.7rem; padding: 2px 8px; border-radius: 12px; margin-left: 8px;
+            font-weight: 700; border: 1px solid hsl(var(--border));
+        }
     </style>
 </head>
 <body>
@@ -351,12 +385,15 @@ HTML_PAGE = """
 
         <div class="card">
             <div class="card-header">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; justify-content: space-between; align-items: start;">
                     <div>
-                        <h2 class="card-title">Live Activity Log</h2>
+                        <div style="display:flex; align-items:center; gap: 0.5rem;">
+                            <h2 class="card-title">Live Activity Log</h2>
+                            <span id="live-indicator" style="height: 8px; width: 8px; background: #22c55e; border-radius: 50%; display: inline-block;"></span>
+                        </div>
                         <p class="card-description">Real-time feeding events and denials</p>
                     </div>
-                    <span id="live-indicator" style="height: 8px; width: 8px; background: #22c55e; border-radius: 50%; display: inline-block;"></span>
+                    <button class="button button-destructive" onclick="clearLogs()">Delete</button>
                 </div>
             </div>
             <div class="card-content">
@@ -400,6 +437,14 @@ function deletePet(id) {
     }
 }
 
+function clearLogs() {
+    if(confirm('Clear all logs?')) {
+        fetch('/api/logs/clear', {method: 'POST'}).then(r => r.json()).then(d => {
+            if(d.success) fetchLogs();
+        });
+    }
+}
+
 function fetchLogs() {
     fetch('/api/logs')
     .then(response => response.json())
@@ -416,10 +461,19 @@ function fetchLogs() {
             const badgeClass = isSuccess ? 'badge-success' : 'badge-destructive';
             const timeStr = log.timestamp.split('.')[0]; 
 
+            // Logic for the counter badge
+            let counterHtml = '';
+            if (log.count > 1) {
+                counterHtml = `<span class="counter-badge">× ${log.count}</span>`;
+            }
+
             html += `
             <div class="pet-item">
                 <div class="pet-info">
-                    <div class="pet-name">${log.pet_name}</div>
+                    <div style="display: flex; align-items: center;">
+                        <div class="pet-name">${log.pet_name}</div>
+                        ${counterHtml}
+                    </div>
                     <div class="pet-details">
                         <span>${timeStr}</span> • <span>${log.details}</span>
                     </div>
