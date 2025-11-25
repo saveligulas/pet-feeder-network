@@ -24,7 +24,6 @@ def close_db(exception):
 
 
 def init_db():
-    """Initialize tables with new feeding settings"""
     with app.app_context():
         db = get_db()
         db.execute("""
@@ -32,20 +31,33 @@ def init_db():
                 id INTEGER PRIMARY KEY, 
                 name TEXT, 
                 rfid_uid TEXT,
-                portion_size INTEGER DEFAULT 5,    -- Motor run time in seconds
-                cooldown_min INTEGER DEFAULT 60,   -- Minutes between meals
-                max_daily_feeds INTEGER DEFAULT 3  -- Max meals per 24h
+                portion_size INTEGER DEFAULT 5,
+                cooldown_min INTEGER DEFAULT 60,
+                max_daily_feeds INTEGER DEFAULT 3
             )
         """)
         db.execute("""
             CREATE TABLE IF NOT EXISTS feeding_logs (
                 id INTEGER PRIMARY KEY, 
-                pet_id INTEGER, 
+                pet_id INTEGER,
+                pet_name TEXT,
+                event_type TEXT,
+                details TEXT,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(pet_id) REFERENCES pets(id)
             )
         """)
         db.commit()
+
+
+def log_event(pet_id, pet_name, event_type, details):
+    db = get_db()
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
+    db.execute(
+        "INSERT INTO feeding_logs (pet_id, pet_name, event_type, details, timestamp) VALUES (?, ?, ?, ?, ?)",
+        (pet_id, pet_name, event_type, details, timestamp)
+    )
+    db.commit()
 
 
 @app.route('/tag', methods=['POST'])
@@ -79,21 +91,19 @@ def scan():
         today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
         feed_count = db.execute(
-            "SELECT COUNT(*) FROM feeding_logs WHERE pet_id = ? AND timestamp >= ?",
+            "SELECT COUNT(*) FROM feeding_logs WHERE pet_id = ? AND event_type = 'Dispensed' AND timestamp >= ?",
             (pet_id, today_start.strftime('%Y-%m-%d %H:%M:%S'))
         ).fetchone()[0]
 
         if feed_count >= pet['max_daily_feeds']:
-            print(f"DENIED: {pet_name} reached daily limit ({feed_count}/{pet['max_daily_feeds']})")
+            log_event(pet_id, pet_name, "Denied", "Daily limit reached")
             return jsonify({
                 "status": "denied",
-                "message": "Daily limit reached",
-                "current_feeds": feed_count,
-                "max_feeds": pet['max_daily_feeds']
+                "message": "Daily limit reached"
             }), 403
 
         last_feed = db.execute(
-            "SELECT timestamp FROM feeding_logs WHERE pet_id = ? ORDER BY timestamp DESC LIMIT 1",
+            "SELECT timestamp FROM feeding_logs WHERE pet_id = ? AND event_type = 'Dispensed' ORDER BY timestamp DESC LIMIT 1",
             (pet_id,)
         ).fetchone()
 
@@ -107,32 +117,36 @@ def scan():
 
             if minutes_since < pet['cooldown_min']:
                 wait_time = int(pet['cooldown_min'] - minutes_since)
-                print(f"DENIED: {pet_name} on diet. Wait {wait_time} min.")
+                log_event(pet_id, pet_name, "Denied", f"Cooldown active ({wait_time}m left)")
                 return jsonify({
                     "status": "denied",
-                    "message": "Diet active",
-                    "next_feed_in_minutes": wait_time
+                    "message": "Diet active"
                 }), 403
 
-        # C. AUTHORIZED - Log it and Dispens
-        db.execute(
-            "INSERT INTO feeding_logs (pet_id, timestamp) VALUES (?, ?)",
-            (pet_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f'))
-        )
-        db.commit()
-
-        print(f"ACCESS GRANTED: {pet_name} | Dispensing for {pet['portion_size']}s")
+        log_event(pet_id, pet_name, "Dispensed", f"{pet['portion_size']}s portion")
 
         return jsonify({
             "status": "authorized",
             "message": "Feeding allowed",
             "pet_name": pet_name,
-            "portion_time": pet['portion_size'],  # Hardware uses this to run motor
-            "feeds_today": feed_count + 1
+            "portion_time": pet['portion_size']
         }), 200
     else:
-        print("Access DENIED: Unknown Tag")
+        log_event(None, "Unknown", "Denied", f"Unknown Tag: {tag_id}")
         return jsonify({"status": "denied", "message": "Pet not recognized"}), 403
+
+
+@app.route('/api/logs')
+def get_logs():
+    db = get_db()
+    logs = db.execute("""
+        SELECT pet_name, event_type, details, timestamp 
+        FROM feeding_logs 
+        ORDER BY timestamp DESC 
+        LIMIT 20
+    """).fetchall()
+
+    return jsonify([dict(row) for row in logs])
 
 
 HTML_PAGE = """
@@ -149,18 +163,15 @@ HTML_PAGE = """
             --foreground: 222.2 84% 4.9%;
             --card: 0 0% 100%;
             --card-foreground: 222.2 84% 4.9%;
-            --popover: 0 0% 100%;
-            --popover-foreground: 222.2 84% 4.9%;
             --primary: 222.2 47.4% 11.2%;
             --primary-foreground: 210 40% 98%;
             --secondary: 210 40% 96.1%;
             --secondary-foreground: 222.2 47.4% 11.2%;
+            --destructive: 0 84.2% 60.2%;
+            --destructive-foreground: 210 40% 98%;
             --muted: 210 40% 96.1%;
             --muted-foreground: 215.4 16.3% 46.9%;
             --accent: 210 40% 96.1%;
-            --accent-foreground: 222.2 47.4% 11.2%;
-            --destructive: 0 84.2% 60.2%;
-            --destructive-foreground: 210 40% 98%;
             --border: 214.3 31.8% 91.4%;
             --input: 214.3 31.8% 91.4%;
             --ring: 222.2 84% 4.9%;
@@ -181,21 +192,9 @@ HTML_PAGE = """
             padding: 2rem 1rem;
         }
 
-        .header {
-            margin-bottom: 2rem;
-        }
-
-        h1 {
-            font-size: 2rem;
-            font-weight: 700;
-            letter-spacing: -0.025em;
-            margin-bottom: 0.5rem;
-        }
-
-        .subtitle {
-            color: hsl(var(--muted-foreground));
-            font-size: 0.875rem;
-        }
+        .header { margin-bottom: 2rem; }
+        h1 { font-size: 2rem; font-weight: 700; margin-bottom: 0.5rem; }
+        .subtitle { color: hsl(var(--muted-foreground)); font-size: 0.875rem; }
 
         .card {
             background: hsl(var(--card));
@@ -204,235 +203,71 @@ HTML_PAGE = """
             margin-bottom: 1.5rem;
         }
 
-        .card-header {
-            padding: 1.5rem;
-            border-bottom: 1px solid hsl(var(--border));
-        }
+        .card-header { padding: 1.5rem; border-bottom: 1px solid hsl(var(--border)); }
+        .card-title { font-size: 1.125rem; font-weight: 600; }
+        .card-description { color: hsl(var(--muted-foreground)); font-size: 0.875rem; margin-top: 0.25rem; }
+        .card-content { padding: 1.5rem; }
 
-        .card-title {
-            font-size: 1.125rem;
-            font-weight: 600;
-            letter-spacing: -0.025em;
-        }
+        .form-group { margin-bottom: 1.5rem; }
+        label { display: block; font-size: 0.875rem; font-weight: 500; margin-bottom: 0.5rem; }
 
-        .card-description {
-            color: hsl(var(--muted-foreground));
-            font-size: 0.875rem;
-            margin-top: 0.25rem;
-        }
-
-        .card-content {
-            padding: 1.5rem;
-        }
-
-        .form-group {
-            margin-bottom: 1.5rem;
-        }
-
-        .form-group:last-child {
-            margin-bottom: 0;
-        }
-
-        label {
-            display: block;
-            font-size: 0.875rem;
-            font-weight: 500;
-            margin-bottom: 0.5rem;
-            color: hsl(var(--foreground));
-        }
-
-        input[type="text"],
-        input[type="number"] {
-            width: 100%;
-            height: 2.5rem;
-            padding: 0.5rem 0.75rem;
-            font-size: 0.875rem;
-            border: 1px solid hsl(var(--input));
-            border-radius: calc(var(--radius) - 2px);
+        input[type="text"], input[type="number"] {
+            width: 100%; height: 2.5rem; padding: 0.5rem 0.75rem;
+            border: 1px solid hsl(var(--input)); border-radius: calc(var(--radius) - 2px);
             background: hsl(var(--background));
-            transition: all 0.15s;
         }
 
-        input:focus {
-            outline: none;
-            border-color: hsl(var(--ring));
-            box-shadow: 0 0 0 3px hsl(var(--ring) / 0.1);
-        }
+        input:focus { outline: none; border-color: hsl(var(--ring)); box-shadow: 0 0 0 3px hsl(var(--ring) / 0.1); }
+        input:read-only { background: hsl(var(--muted)); cursor: not-allowed; }
 
-        input:read-only {
-            background: hsl(var(--muted));
-            color: hsl(var(--muted-foreground));
-            cursor: not-allowed;
-        }
-
-        .input-group {
-            display: flex;
-            gap: 0.5rem;
-        }
-
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 1rem;
-        }
+        .input-group { display: flex; gap: 0.5rem; }
+        .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; }
 
         .button {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: calc(var(--radius) - 2px);
-            font-size: 0.875rem;
-            font-weight: 500;
-            height: 2.5rem;
-            padding: 0 1rem;
-            border: none;
-            cursor: pointer;
-            transition: all 0.15s;
-            white-space: nowrap;
+            display: inline-flex; align-items: center; justify-content: center;
+            border-radius: calc(var(--radius) - 2px); font-size: 0.875rem; font-weight: 500;
+            height: 2.5rem; padding: 0 1rem; border: none; cursor: pointer;
         }
 
-        .button:disabled {
-            pointer-events: none;
-            opacity: 0.5;
-        }
-
-        .button-primary {
-            background: hsl(var(--primary));
-            color: hsl(var(--primary-foreground));
-        }
-
-        .button-primary:hover {
-            background: hsl(var(--primary) / 0.9);
-        }
-
-        .button-secondary {
-            background: hsl(var(--secondary));
-            color: hsl(var(--secondary-foreground));
-        }
-
-        .button-secondary:hover {
-            background: hsl(var(--secondary) / 0.8);
-        }
-
-        .button-destructive {
-            background: hsl(var(--destructive));
-            color: hsl(var(--destructive-foreground));
-            height: 2rem;
-            padding: 0 0.75rem;
-            font-size: 0.8125rem;
-        }
-
-        .button-destructive:hover {
-            background: hsl(var(--destructive) / 0.9);
-        }
-
-        .button-full {
-            width: 100%;
-        }
+        .button-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+        .button-secondary { background: hsl(var(--secondary)); color: hsl(var(--secondary-foreground)); }
+        .button-destructive { background: hsl(var(--destructive)); color: hsl(var(--destructive-foreground)); height: 2rem; }
+        .button-full { width: 100%; }
 
         .alert {
-            padding: 0.75rem 1rem;
-            border-radius: calc(var(--radius) - 2px);
-            font-size: 0.875rem;
-            margin-bottom: 1rem;
-            display: none;
-            border: 1px solid;
+            padding: 0.75rem 1rem; border-radius: calc(var(--radius) - 2px);
+            font-size: 0.875rem; margin-bottom: 1rem; display: none; border: 1px solid;
         }
+        .alert-warning { background: hsl(48 96% 89%); color: hsl(25 95% 33%); border-color: hsl(48 96% 76%); }
+        .alert-success { background: hsl(143 85% 96%); color: hsl(140 100% 27%); border-color: hsl(145 92% 91%); }
 
-        .alert-warning {
-            background: hsl(48 96% 89%);
-            color: hsl(25 95% 33%);
-            border-color: hsl(48 96% 76%);
-        }
-
-        .alert-success {
-            background: hsl(143 85% 96%);
-            color: hsl(140 100% 27%);
-            border-color: hsl(145 92% 91%);
-        }
-
-        .pet-list {
-            display: flex;
-            flex-direction: column;
-            gap: 0.75rem;
-        }
+        .pet-list { display: flex; flex-direction: column; gap: 0.75rem; }
 
         .pet-item {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 1rem;
-            border: 1px solid hsl(var(--border));
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 1rem; border: 1px solid hsl(var(--border));
             border-radius: calc(var(--radius) - 2px);
-            transition: all 0.15s;
         }
 
-        .pet-item:hover {
-            background: hsl(var(--accent));
-        }
-
-        .pet-info {
-            flex: 1;
-        }
-
-        .pet-name {
-            font-weight: 600;
-            font-size: 1rem;
-            margin-bottom: 0.25rem;
-        }
-
-        .pet-details {
-            font-size: 0.8125rem;
-            color: hsl(var(--muted-foreground));
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.75rem;
-            margin-bottom: 0.25rem;
-        }
-
-        .pet-uid {
-            font-size: 0.75rem;
-            color: hsl(var(--muted-foreground));
-            font-family: monospace;
-        }
+        .pet-info { flex: 1; }
+        .pet-name { font-weight: 600; font-size: 0.95rem; margin-bottom: 0.25rem; }
+        .pet-details { font-size: 0.8125rem; color: hsl(var(--muted-foreground)); }
 
         .badge {
-            display: inline-flex;
-            align-items: center;
-            border-radius: 9999px;
-            padding: 0.125rem 0.625rem;
-            font-size: 0.75rem;
-            font-weight: 600;
-            background: hsl(var(--secondary));
-            color: hsl(var(--secondary-foreground));
+            display: inline-flex; align-items: center; border-radius: 9999px;
+            padding: 0.125rem 0.625rem; font-size: 0.75rem; font-weight: 600;
         }
+        .badge-success { background: hsl(143 85% 96%); color: hsl(140 100% 27%); border: 1px solid hsl(145 92% 91%); }
+        .badge-destructive { background: hsl(0 84% 96%); color: hsl(0 84% 60%); border: 1px solid hsl(0 84% 90%); }
 
-        .empty-state {
-            text-align: center;
-            padding: 3rem 1rem;
-            color: hsl(var(--muted-foreground));
-        }
-
-        .empty-state-icon {
-            font-size: 3rem;
-            margin-bottom: 0.5rem;
-            opacity: 0.5;
-        }
+        .empty-state { text-align: center; padding: 3rem 1rem; color: hsl(var(--muted-foreground)); }
+        .empty-state-icon { font-size: 3rem; margin-bottom: 0.5rem; opacity: 0.5; }
 
         @media (max-width: 640px) {
-            .grid {
-                grid-template-columns: 1fr;
-            }
-
-            .pet-item {
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 0.75rem;
-            }
-
-            .button-destructive {
-                width: 100%;
-            }
+            .grid { grid-template-columns: 1fr; }
+            .pet-item { flex-direction: column; align-items: flex-start; gap: 0.75rem; }
+            .button-destructive, .badge { align-self: flex-start; }
+            .pet-item .badge { margin-top: 0.5rem; }
         }
     </style>
 </head>
@@ -454,19 +289,14 @@ HTML_PAGE = """
                         <label for="name">Pet Name</label>
                         <input type="text" id="name" name="name" placeholder="e.g. Rex" required>
                     </div>
-
                     <div class="form-group">
                         <label for="petUID">RFID Tag UID</label>
                         <div class="input-group">
                             <input type="text" name="uid" id="petUID" placeholder="Scan tag..." required readonly style="flex: 1;">
-                            <button type="button" class="button button-secondary" onclick="startScan()">
-                                📡 Scan Tag
-                            </button>
+                            <button type="button" class="button button-secondary" onclick="startScan()">📡 Scan Tag</button>
                         </div>
                     </div>
-
                     <div id="status" class="alert"></div>
-
                     <div class="grid">
                         <div class="form-group">
                             <label for="portion">Portion (Seconds)</label>
@@ -477,15 +307,11 @@ HTML_PAGE = """
                             <input type="number" id="cooldown" name="cooldown" value="60" min="0" required>
                         </div>
                     </div>
-
                     <div class="form-group">
                         <label for="max_feeds">Maximum Meals per Day</label>
                         <input type="number" id="max_feeds" name="max_feeds" value="3" min="1" required>
                     </div>
-
-                    <button type="submit" class="button button-primary button-full">
-                        💾 Save Pet Settings
-                    </button>
+                    <button type="submit" class="button button-primary button-full">💾 Save Pet Settings</button>
                 </form>
             </div>
         </div>
@@ -503,15 +329,14 @@ HTML_PAGE = """
                             <div class="pet-info">
                                 <div class="pet-name">{{ pet.name }}</div>
                                 <div class="pet-details">
-                                    <span>⏱️ {{ pet.portion_size }}s portion</span>
-                                    <span>⏳ {{ pet.cooldown_min }}m cooldown</span>
-                                    <span>🥣 {{ pet.max_daily_feeds }}× daily</span>
+                                    <span>⏱️ {{ pet.portion_size }}s</span>
+                                    <span> • ⏳ {{ pet.cooldown_min }}m</span>
+                                    <span> • 🥣 {{ pet.max_daily_feeds }}×</span>
+                                    <br>
+                                    <span style="font-family: monospace; font-size: 0.75rem;">ID: {{ pet.rfid_uid }}</span>
                                 </div>
-                                <div class="pet-uid">{{ pet.rfid_uid }}</div>
                             </div>
-                            <button class="button button-destructive" onclick="deletePet({{ pet.id }})">
-                                Remove
-                            </button>
+                            <button class="button button-destructive" onclick="deletePet({{ pet.id }})">Remove</button>
                         </div>
                         {% endfor %}
                     </div>
@@ -519,15 +344,32 @@ HTML_PAGE = """
                     <div class="empty-state">
                         <div class="empty-state-icon">🐕</div>
                         <div>No pets registered yet</div>
-                        <div style="font-size: 0.8125rem; margin-top: 0.25rem;">Add your first pet above to get started</div>
                     </div>
                 {% endif %}
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <h2 class="card-title">Live Activity Log</h2>
+                        <p class="card-description">Real-time feeding events and denials</p>
+                    </div>
+                    <span id="live-indicator" style="height: 8px; width: 8px; background: #22c55e; border-radius: 50%; display: inline-block;"></span>
+                </div>
+            </div>
+            <div class="card-content">
+                <div id="log-list" class="pet-list">
+                    <div class="empty-state" style="padding: 1rem;">Loading logs...</div>
+                </div>
             </div>
         </div>
     </div>
 
 <script>
 let checkInt;
+
 function startScan() {
     fetch('/start_registration', { method: 'POST' }).then(r => r.json()).then(d => {
         const st = document.getElementById('status');
@@ -551,19 +393,57 @@ function checkUID() {
 }
 
 function deletePet(id) {
-    if(confirm('Are you sure you want to remove this pet? This will also delete their feeding history.')) {
+    if(confirm('Are you sure you want to remove this pet?')) {
         fetch('/delete/'+id, {method:'POST'}).then(r=>r.json()).then(d=>{ 
             if(d.success) window.location.reload(); 
         });
     }
 }
+
+function fetchLogs() {
+    fetch('/api/logs')
+    .then(response => response.json())
+    .then(data => {
+        const container = document.getElementById('log-list');
+        if (data.length === 0) {
+            container.innerHTML = '<div class="empty-state" style="padding: 1rem;">No recent activity</div>';
+            return;
+        }
+
+        let html = '';
+        data.forEach(log => {
+            const isSuccess = log.event_type === 'Dispensed';
+            const badgeClass = isSuccess ? 'badge-success' : 'badge-destructive';
+            const timeStr = log.timestamp.split('.')[0]; 
+
+            html += `
+            <div class="pet-item">
+                <div class="pet-info">
+                    <div class="pet-name">${log.pet_name}</div>
+                    <div class="pet-details">
+                        <span>${timeStr}</span> • <span>${log.details}</span>
+                    </div>
+                </div>
+                <span class="badge ${badgeClass}">${log.event_type}</span>
+            </div>
+            `;
+        });
+        container.innerHTML = html;
+
+        const indicator = document.getElementById('live-indicator');
+        indicator.style.opacity = '0.5';
+        setTimeout(() => indicator.style.opacity = '1', 200);
+    });
+}
+
+setInterval(fetchLogs, 2000);
+fetchLogs();
 </script>
 </body>
 </html>
 """
 
 
-# --- FRONTEND ROUTES ---
 @app.route("/")
 def index():
     init_db()
@@ -583,14 +463,13 @@ def start_registration():
 def get_captured_uid():
     uid = pending_registration.get("last_uid")
     if uid:
-        pending_registration["last_uid"] = None  # Consume it
+        pending_registration["last_uid"] = None
         return jsonify({"uid": uid})
     return jsonify({"uid": None})
 
 
 @app.post("/register")
 def register_pet():
-    # Capture all new form fields
     name = request.form.get("name")
     uid = request.form.get("uid")
     portion = request.form.get("portion")
@@ -624,4 +503,4 @@ def delete_pet(pet_id):
 
 if __name__ == "__main__":
     init_db()
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000)
