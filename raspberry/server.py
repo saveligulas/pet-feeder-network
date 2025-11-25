@@ -432,7 +432,7 @@ HTML_PAGE = """
                         <div class="pet-uid">{{ pet.rfid_uid }}</div>
                     </div>
                     <button class="btn btn-destructive btn-icon" onclick="deletePet({{ pet.id }}, '{{ pet.name }}')" title="Delete {{ pet.name }}">
-                        🗑️
+                        Delete
                     </button>
                 </div>
                 {% endfor %}
