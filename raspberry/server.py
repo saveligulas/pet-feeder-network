@@ -385,7 +385,7 @@ HTML_PAGE = """
 
         <div class="card">
             <div class="card-header">
-                <div style="display: flex; justify-content: space-between; align-items: start;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
                     <div>
                         <div style="display:flex; align-items:center; gap: 0.5rem;">
                             <h2 class="card-title">Live Activity Log</h2>
