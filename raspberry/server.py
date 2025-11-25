@@ -24,7 +24,23 @@ def scan():
     # Check if we're in registration mode
     if pending_registration["active"]:
         pending_registration["active"] = False
+
+        # Check if tag is already registered
+        db = get_db()
+        existing_pet = db.execute("SELECT * FROM pets WHERE rfid_uid = ?", (tag_id,)).fetchone()
+
+        if existing_pet:
+            pending_registration["last_uid"] = None
+            pending_registration["error"] = f"Tag already registered to {existing_pet['name']}"
+            print(f"Registration failed: Tag already belongs to {existing_pet['name']}")
+            return jsonify({
+                "status": "error",
+                "message": f"Tag already registered to {existing_pet['name']}",
+                "uid": tag_id
+            }), 409
+
         pending_registration["last_uid"] = tag_id
+        pending_registration["error"] = None
         print(f"Tag captured for registration: {tag_id}")
         return jsonify({
             "status": "registration",
@@ -245,7 +261,6 @@ HTML_PAGE = """
         .alert {
             padding: 1rem;
             border-radius: calc(var(--radius) - 2px);
-            margin-bottom: 1rem;
             font-size: 0.875rem;
             display: none;
             animation: slideIn 0.3s ease-out;
@@ -393,7 +408,7 @@ HTML_PAGE = """
 
                 <div class="button-group">
                     <button type="button" class="btn btn-secondary" id="registerTagBtn" onclick="startRegistration()">
-                        Scan Tag
+                        <span class="icon">📡</span> Register Tag (Scan Next)
                     </button>
 
                     <div id="status" class="alert"></div>
@@ -417,7 +432,7 @@ HTML_PAGE = """
                         <div class="pet-uid">{{ pet.rfid_uid }}</div>
                     </div>
                     <button class="btn btn-destructive btn-icon" onclick="deletePet({{ pet.id }}, '{{ pet.name }}')" title="Delete {{ pet.name }}">
-                        Delete
+                        🗑️
                     </button>
                 </div>
                 {% endfor %}
