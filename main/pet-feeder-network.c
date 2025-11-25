@@ -19,12 +19,12 @@
 // =================================================================
 
 // --- Wi-Fi Credentials ---
-#define ESP_WIFI_SSID      "wlan"
-#define ESP_WIFI_PASS      "pass"
+#define ESP_WIFI_SSID      "Wlang Hotspot"
+#define ESP_WIFI_PASS      "9876543210"
 #define ESP_MAXIMUM_RETRY  5
 
 // --- Local Endpoint ---
-#define SERVER_URL "http://192.168.1.48:5000/rfid-data"
+#define SERVER_URL "http://10.232.102.48:5000/tag"
 
 // --- UART Configuration for Uno ---
 #define UART_NUM            UART_NUM_1      // Use UART1
@@ -108,17 +108,25 @@ void wifi_init_sta(void) {
 }
 
 // --- HTTP Client Function ---
-esp_err_t send_uid_to_server(const char* uid_data) {
+esp_err_t send_uid_to_server(char* uid_data) {
     esp_http_client_config_t config = {
         .url = SERVER_URL,
         .method = HTTP_METHOD_POST,
     };
     esp_http_client_handle_t client = esp_http_client_init(&config);
 
-    char post_data[64];
-    snprintf(post_data, sizeof(post_data), "uid=%s", uid_data);
+    char post_data[128];
 
-    esp_http_client_set_header(client, "Content-Type", "application/x-www-form-urlencoded");
+    // Trim newline or carriage return characters from uid_data
+    uid_data[strcspn(uid_data, "\r\n")] = '\0';
+
+    // Now safely build JSON
+    snprintf(post_data, sizeof(post_data),
+             "{\"uid\":\"%s\"}", uid_data);
+
+    ESP_LOGI(TAG, "POST Body: %s", post_data);
+
+    esp_http_client_set_header(client, "Content-Type", "application/json");
     esp_http_client_set_post_field(client, post_data, strlen(post_data));
 
     esp_err_t err = esp_http_client_perform(client);
@@ -185,5 +193,5 @@ void app_main(void) {
 
     // Initialize UART and start the listening task
     uart_init();
-    xTaskCreate(uart_rx_task, "uart_rx_task", 2048, NULL, 10, NULL);
+    xTaskCreate(uart_rx_task, "uart_rx_task", 4096, NULL, 10, NULL);
 }
