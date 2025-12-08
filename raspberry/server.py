@@ -17,7 +17,7 @@ def get_db():
 
 
 @app.teardown_appcontext
-def close_db(exception):
+def close_db():
     db = g.pop("db", None)
     if db:
         db.close()
@@ -139,7 +139,6 @@ def scan():
 @app.route('/api/logs')
 def get_logs():
     db = get_db()
-    # Fetch 100 rows to allow for grouping, but we will return fewer
     raw_logs = db.execute("""
         SELECT pet_name, event_type, details, timestamp 
         FROM feeding_logs 
@@ -153,7 +152,6 @@ def get_logs():
         current_log = dict(row)
         current_log['count'] = 1
 
-        # Check if this log is identical to the previous one processed (which is newer in time)
         if grouped_logs:
             last_log = grouped_logs[-1]
             if (last_log['pet_name'] == current_log['pet_name'] and
@@ -165,7 +163,6 @@ def get_logs():
 
         grouped_logs.append(current_log)
 
-    # Return top 20 grouped items
     return jsonify(grouped_logs[:20])
 
 
