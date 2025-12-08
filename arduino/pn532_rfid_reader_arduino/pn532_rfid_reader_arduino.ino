@@ -1,5 +1,6 @@
+#include <PN532_Custom.h>
+
 #include <SPI.h>
-#include "pn532.h"
 #include <SoftwareSerial.h>
 
 #define PN532_CS   (10)
