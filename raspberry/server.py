@@ -308,8 +308,8 @@ HTML_PAGE = """
 <body>
     <div class="container">
         <div class="header">
-            <h1>🐾 Smart Pet Feeder</h1>
-            <p class="subtitle">Manage portions and feeding schedules for your pets</p>
+            <h1>Smart Pet Feeder</h1>
+            <p class="subtitle">Manage feeding schedules for your pets</p>
         </div>
 
         <div class="card">
@@ -327,7 +327,7 @@ HTML_PAGE = """
                         <label for="petUID">RFID Tag UID</label>
                         <div class="input-group">
                             <input type="text" name="uid" id="petUID" placeholder="Scan tag..." required readonly style="flex: 1;">
-                            <button type="button" class="button button-secondary" onclick="startScan()">📡 Scan Tag</button>
+                            <button type="button" class="button button-secondary" onclick="startScan()">Scan Tag</button>
                         </div>
                     </div>
                     <div id="status" class="alert"></div>
@@ -345,7 +345,7 @@ HTML_PAGE = """
                         <label for="max_feeds">Maximum Meals per Day</label>
                         <input type="number" id="max_feeds" name="max_feeds" value="3" min="1" required>
                     </div>
-                    <button type="submit" class="button button-primary button-full">💾 Save Pet Settings</button>
+                    <button type="submit" class="button button-primary button-full">Save Pet Settings</button>
                 </form>
             </div>
         </div>
@@ -353,7 +353,7 @@ HTML_PAGE = """
         <div class="card">
             <div class="card-header">
                 <h2 class="card-title">Registered Pets</h2>
-                <p class="card-description">Manage your pets and their feeding schedules</p>
+                <p class="card-description">Manage your pets</p>
             </div>
             <div class="card-content">
                 {% if pets %}
