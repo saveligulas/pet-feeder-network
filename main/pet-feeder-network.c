@@ -9,14 +9,14 @@
 #include "nvs_flash.h"
 #include "esp_netif.h"
 #include "esp_http_client.h"
-#include "cJSON.h"
+#include "cJSON.h" // has to be imported using idf.py
 #include "driver/uart.h"
 #include "driver/gpio.h"
 
-#define ESP_WIFI_SSID      " Hotspot"
-#define ESP_WIFI_PASS      "9876543210"
+#define ESP_WIFI_SSID      "example_wifi_ssid"
+#define ESP_WIFI_PASS      "example_wifi_pass"
 #define ESP_MAXIMUM_RETRY  5
-#define SERVER_URL         "http://10.20.79.48:5000/tag"
+#define SERVER_URL         "http://RASPBERRY_WIFI_IP:5000/tag"
 
 #define UART_NUM           UART_NUM_1
 #define UART_RX_PIN        9
@@ -30,18 +30,19 @@
 #define STEPPER_DELAY_MS   10
 #define STEPS_PER_REVOLUTION 2048
 
+#define WIFI_CONNECTED_BIT BIT0
+#define WIFI_FAIL_BIT      BIT1
+
+static const char *TAG = "RFID";
+static volatile bool motor_busy = false;
+static EventGroupHandle_t s_wifi_event_group;
+static int s_retry_num = 0;
+
 void stepper_init(void);
 void stepper_rotate(int num_steps, int direction);
 void stepper_stop(void);
 void stepper_set_step(int step);
 void stepper_rotate_for_seconds(int duration_seconds);
-
-static const char *TAG = "RFID";
-static volatile bool motor_busy = false;
-static EventGroupHandle_t s_wifi_event_group;
-#define WIFI_CONNECTED_BIT BIT0
-#define WIFI_FAIL_BIT      BIT1
-static int s_retry_num = 0;
 
 static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data) {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
