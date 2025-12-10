@@ -38,49 +38,49 @@ The Smart Pet-Feeder is a distributed IoT system consisting of three main compon
      │                    │  │ Web Dashboard            │ │
      │                    │  │ (Management UI)          │ │
      │                    │  └──────────────────────────┘ │
-     │                    └────────────────────────────────┘
+     │                    └───────────────────────────────┘
      │                              ▲
      │                              │ HTTP POST
      │                         (UID + Response)
      │                              │
      │    ┌─────────────────────────▼──────────────────────┐
      │    │        ESP32C3 Microcontroller                 │
-     │    │        (Central Controller)                     │
+     │    │        (Central Controller)                    │
      │    │                                                │
-     │    │  ┌──────────────┐  ┌──────────────────────┐  │
-     │    │  │ WiFi Module  │  │ UART Interface       │  │
-     │    │  │              │  │ (9600 baud)          │  │
-     │    │  └──────────────┘  └──────────────────────┘  │
-     │    │                          ▲                    │
-     │    │                          │ UART RX (Pin 9)   │
-     │    │  ┌──────────────────────┐│                   │
-     │    │  │ Stepper Motor Driver │└────┐              │
-     │    │  │ (GPIO 0,1,3,5)       │     │              │
-     │    │  └──────────────────────┘     │              │
-     │    └──────────────────────────────┬┘              │
-     │                                    │               │
-     │    ┌───────────────────────────────▼──────────────┐
-     │    │        Arduino Uno R3                        │
-     │    │        (RFID Reader)                         │
-     │    │                                              │
+     │    │  ┌──────────────┐  ┌──────────────────────┐    │
+     │    │  │ WiFi Module  │  │ UART Interface       │    │
+     │    │  │              │  │ (9600 baud)          │    │
+     │    │  └──────────────┘  └──────────────────────┘    │ 
+     │    │                          ▲                     │
+     │    │                          │ UART RX (Pin 9)     │
+     │    │  ┌──────────────────────┐│                     │
+     │    │  │ Stepper Motor Driver │└───┐                 │
+     │    │  │ (GPIO 0,1,3,5)       │    │                 │
+     │    │  └──────────────────────┘    │                 │
+     │    └──────────────────────────────┘─────────────────┘
+     │                                   │                
+     │    ┌──────────────────────────────▼──────────────┐
+     │    │        Arduino Uno R3                       │
+     │    │        (RFID Reader)                        │
+     │    │                                             │
      │    │  ┌─────────────────────────┐                │
      │    │  │ PN532 RFID Reader       │                │
      │    │  │ (SPI Interface)         │                │
      │    │  │                         │                │
      │    │  │ Detects ISO14443A tags  │                │
      │    │  └─────────────────────────┘                │
-     │    │           ▲                                  │
+     │    │           ▲                                 │
      │    │           │ SPI (CS Pin 10)                 │
      │    │  ┌────────▼─────────────────┐               │
      │    │  │ RFID Tags (Pet Cards)    │               │
      │    │  │ Detected & Read          │               │
      │    │  └──────────────────────────┘               │
-     │    └──────────────────────────────────────────────┘
+     │    └─────────────────────────────────────────────┘
      │
      └─► ┌─────────────────────────────────────────────────┐
-         │  Stepper Motor (Food Dispenser)                │
-         │  Controlled by ESP32 GPIO pins                 │
-         │  Rotates based on portion_size configuration   │
+         │  Stepper Motor (Food Dispenser)                 │
+         │  Controlled by ESP32 GPIO pins                  │
+         │  Rotates based on portion_size configuration    │
          └─────────────────────────────────────────────────┘
 ```
 
