@@ -11,7 +11,6 @@ PN532 nfc(PN532_CS);
 void setup() {
   Serial.begin(115220);
   while (!Serial);
-  Serial.println("Uno RFID to ESP32 Gateway");
   unoToEspSerial.begin(9600);
 
   nfc.begin();
@@ -21,10 +20,6 @@ void setup() {
     Serial.println("Error: Pn532 board not found");
     while (1);
   }
-
-  Serial.print("Pn532 found"); Serial.println((versiondata >> 24) & 0xFF, HEX);
-  Serial.print("Firmware ver. "); Serial.print((versiondata >> 16) & 0xFF, DEC);
-  Serial.print('.'); Serial.println((versiondata >> 8) & 0xFF, DEC);
 
   nfc.SAMConfig();
   
